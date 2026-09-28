@@ -3,8 +3,6 @@ overrides:
   sharp: ^0.35.0
   js-yaml@4: ^4.3.2
 
-# Transitive deps of the mint CLI whose install scripts were never run under
-# pnpm 10 (recorded as ignoredBuilds). pnpm 12 requires an explicit decision.
 allowBuilds:
   "@scarf/scarf": false
   keytar: false
