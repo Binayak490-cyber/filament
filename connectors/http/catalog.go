@@ -4,6 +4,9 @@ import (
 	_ "embed"
 )
 
+//go:embed manifests/apollo.yaml
+var apolloManifest []byte
+
 //go:embed manifests/attio.yaml
 var attioManifest []byte
 
@@ -51,6 +54,11 @@ var stripeManifest []byte
 
 //go:embed manifests/zoho.yaml
 var zohoManifest []byte
+
+// NewApollo returns a Source backed by the embedded Apollo API manifest.
+func NewApollo() *Source {
+	return newCatalogSource(apolloManifest)
+}
 
 // NewAttio returns a Source backed by the embedded Attio REST API manifest.
 func NewAttio() *Source {

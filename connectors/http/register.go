@@ -13,6 +13,7 @@ import (
 // New SaaS connectors are a catalog/<name>.yaml manifest + one line here — no
 // new module, no new dependency.
 func init() {
+	registry.RegisterSource("apollo", filament.MaturityAlpha, func() filament.Source { return NewApollo() })
 	registry.RegisterSource("attio", filament.MaturityAlpha, func() filament.Source { return NewAttio() })
 	registry.RegisterSource("github", filament.MaturityBeta, func() filament.Source { return NewGitHub() })
 	registry.RegisterSource("gong", filament.MaturityAlpha, func() filament.Source { return NewGong() })
