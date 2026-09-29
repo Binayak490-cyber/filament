@@ -19,6 +19,9 @@ var gongManifest []byte
 //go:embed manifests/granola.yaml
 var granolaManifest []byte
 
+//go:embed manifests/heyreach.yaml
+var heyreachManifest []byte
+
 //go:embed manifests/instantly.yaml
 var instantlyManifest []byte
 
@@ -78,6 +81,11 @@ func NewGong() *Source {
 // NewGranola returns a Source backed by the embedded Granola REST API manifest.
 func NewGranola() *Source {
 	return newCatalogSource(granolaManifest)
+}
+
+// NewHeyReach returns a Source backed by the embedded HeyReach API manifest.
+func NewHeyReach() *Source {
+	return newCatalogSource(heyreachManifest)
 }
 
 // NewInstantly returns a Source backed by the embedded Instantly API manifest.
