@@ -176,7 +176,7 @@ func parseBytes(w arrowbatch.RowWriter, text []byte) error {
 // parseDate reads "YYYY-MM-DD"; MySQL's zero date, which has no calendar
 // meaning, lands as null.
 func parseDate(w arrowbatch.RowWriter, text []byte) error {
-	if string(text) == "0000-00-00" {
+	if strings.HasPrefix(string(text), "0000-00-00") {
 		w.Null()
 		return nil
 	}
