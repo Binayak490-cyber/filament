@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"testing"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow/decimal128"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/galaxy-io/filament/rowmodel"
 )
 
+// stubRowWriter implements arrowbatch.RowWriter for unit testing parseDate and parseDatetime.
 type stubRowWriter struct {
 	nullCalled bool
 	dateVal    int32
@@ -37,6 +39,7 @@ func (s *stubRowWriter) Close() error               { return nil }
 
 var _ arrowbatch.RowWriter = (*stubRowWriter)(nil)
 
+// TestParseDate verifies text and binary protocol parsing for valid dates, zero dates, and invalid formats.
 func TestParseDate(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -70,6 +73,11 @@ func TestParseDate(t *testing.T) {
 			input:   "not-a-date",
 			wantErr: true,
 		},
+		{
+			name:    "malformed prefix zero date",
+			input:   "0000-00-00garbage",
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -88,18 +96,27 @@ func TestParseDate(t *testing.T) {
 			if tt.wantNull && !w.nullCalled {
 				t.Fatalf("expected Null() to be called")
 			}
-			if !tt.wantNull && w.dateVal != tt.wantDate {
-				t.Fatalf("got date %d, want %d", w.dateVal, tt.wantDate)
+			if !tt.wantNull {
+				if w.nullCalled {
+					t.Fatalf("expected Null() not to be called")
+				}
+				if w.dateVal != tt.wantDate {
+					t.Fatalf("got date %d, want %d", w.dateVal, tt.wantDate)
+				}
 			}
 		})
 	}
 }
 
+// TestParseDatetime verifies text and binary protocol parsing for valid datetimes, zero datetimes, and invalid formats.
 func TestParseDatetime(t *testing.T) {
+	wantTs := time.Date(2024, 5, 1, 12, 0, 0, 0, time.UTC).UnixMicro()
+
 	tests := []struct {
 		name     string
 		input    string
 		wantNull bool
+		wantTs   int64
 		wantErr  bool
 	}{
 		{
@@ -116,11 +133,13 @@ func TestParseDatetime(t *testing.T) {
 			name:     "valid text datetime",
 			input:    "2024-05-01 12:00:00",
 			wantNull: false,
+			wantTs:   wantTs,
 		},
 		{
 			name:     "valid binary-protocol datetime",
 			input:    "2024-05-01T12:00:00Z",
 			wantNull: false,
+			wantTs:   wantTs,
 		},
 		{
 			name:    "invalid datetime",
@@ -144,6 +163,14 @@ func TestParseDatetime(t *testing.T) {
 			}
 			if tt.wantNull && !w.nullCalled {
 				t.Fatalf("expected Null() to be called")
+			}
+			if !tt.wantNull {
+				if w.nullCalled {
+					t.Fatalf("expected Null() not to be called")
+				}
+				if w.tsVal != tt.wantTs {
+					t.Fatalf("got ts %d, want %d", w.tsVal, tt.wantTs)
+				}
 			}
 		})
 	}
