@@ -34,7 +34,7 @@ func (s *stubRowWriter) Time(int64)                 {}
 func (s *stubRowWriter) Timestamp(v int64)          { s.tsVal = v }
 func (s *stubRowWriter) EndRow(rowmodel.Meta) error { return nil }
 func (s *stubRowWriter) Flush() error               { return nil }
-func (s *stubRowWriter) Drain(rowmodel.Meta) error { return nil }
+func (s *stubRowWriter) Drain(rowmodel.Meta) error  { return nil }
 func (s *stubRowWriter) Close() error               { return nil }
 
 var _ arrowbatch.RowWriter = (*stubRowWriter)(nil)
