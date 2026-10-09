@@ -261,10 +261,38 @@ func (s *Sink) Apply(ctx context.Context, b *arrowbatch.Batch, opts filament.App
 		if uid == "" {
 			uid = sanitizeIndexUID(s.cfg.IndexPrefix, b.Resource)
 		}
+		primaryKey := s.cfg.PrimaryKey
+		fields := b.Rows().Schema().Fields()
+		if primaryKey == "" {
+			for _, f := range fields {
+				if strings.EqualFold(f.Name, "id") {
+					primaryKey = f.Name
+					break
+				}
+			}
+			if primaryKey == "" {
+				for _, f := range fields {
+					if strings.HasSuffix(strings.ToLower(f.Name), "_id") || strings.HasSuffix(f.Name, "Id") {
+						primaryKey = f.Name
+						break
+					}
+				}
+			}
+			if primaryKey == "" && len(fields) > 0 {
+				primaryKey = fields[0].Name
+			}
+		}
+		pkIdx := -1
+		for i, f := range fields {
+			if f.Name == primaryKey {
+				pkIdx = i
+				break
+			}
+		}
 		meta = &indexMeta{
 			UID:           uid,
-			PrimaryKey:    s.cfg.PrimaryKey,
-			PrimaryKeyIdx: -1,
+			PrimaryKey:    primaryKey,
+			PrimaryKeyIdx: pkIdx,
 		}
 		s.indexes[b.Resource] = meta
 	}
@@ -342,14 +370,24 @@ func (s *Sink) writeBatch(ctx context.Context, meta *indexMeta, b *arrowbatch.Ba
 // writeMerge walks the batch as ordered runs of deletes and upserts. Tasks run
 // in queue order, so a key deleted and re-inserted in one batch settles correctly.
 func (s *Sink) writeMerge(ctx context.Context, meta *indexMeta, b *arrowbatch.Batch) (filament.WriteReceipt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	rows := b.Rows()
+	if meta.PrimaryKey != "" && (meta.PrimaryKeyIdx < 0 || meta.PrimaryKeyIdx >= int(rows.NumCols()) || rows.Schema().Field(meta.PrimaryKeyIdx).Name != meta.PrimaryKey) {
+		meta.PrimaryKeyIdx = -1
+		for i, f := range rows.Schema().Fields() {
+			if f.Name == meta.PrimaryKey {
+				meta.PrimaryKeyIdx = i
+				break
+			}
+		}
+	}
+
 	if meta.PrimaryKeyIdx < 0 || meta.PrimaryKeyIdx >= int(rows.NumCols()) {
 		return filament.WriteReceipt{}, fmt.Errorf("meilisearch sink: merge on %q: primary key %q is not in the schema", b.Resource, meta.PrimaryKey)
 	}
 	pkCol := rows.Column(meta.PrimaryKeyIdx)
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	enc := s.enc[rows.Schema()]
 	if enc == nil {

@@ -461,3 +461,92 @@ func TestMergeSendsDeletesAndUpsertsInOrder(t *testing.T) {
 		t.Errorf("calls = %q, want %q", *calls, want)
 	}
 }
+
+// TestMergeAutoDerivedIndex verifies that CDC merge writes succeed when index metadata is auto-derived during Apply.
+func TestMergeAutoDerivedIndex(t *testing.T) {
+	server, calls := recordingServer(t, true)
+
+	sink := New()
+	ctx := context.Background()
+	merge := filament.WritePolicy{Capability: filament.WritePolicyCapability{Mode: filament.WriteMerge}}
+
+	err := sink.Open(ctx, filament.RunSpec{
+		Run:           "run-1",
+		Sink:          filament.Ref{Config: map[string]any{"url": server.URL, "gzip": false}},
+		WritePolicies: map[string]filament.WritePolicy{"products": merge},
+	})
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+
+	schema := rowmodel.Schema{
+		Resource:   "products",
+		PrimaryKey: []string{"id"},
+		Fields:     []rowmodel.Field{{Name: "id", Logical: rowmodel.LogicalInt64}},
+	}
+
+	builder := array.NewRecordBuilder(memory.DefaultAllocator, arrowbatch.Schema(schema))
+	builder.Field(0).(*array.Int64Builder).AppendValues([]int64{1}, nil)
+	rows := builder.NewRecordBatch()
+	builder.Release()
+
+	b := arrowbatch.NewBatch(rows, arrowbatch.NewOperations([]rowmodel.Operation{rowmodel.OpInsert}))
+	b.Resource = "products"
+	defer b.Release()
+
+	receipt, err := sink.Apply(ctx, b, filament.ApplyOptions{Policy: merge})
+	if err != nil {
+		t.Fatalf("Apply failed: %v", err)
+	}
+	if receipt.Rows != 1 {
+		t.Errorf("receipt.Rows = %d, want 1", receipt.Rows)
+	}
+
+	want := []string{
+		"POST /indexes/products/documents {\"id\":1}\n",
+	}
+	if strings.Join(*calls, "|") != strings.Join(want, "|") {
+		t.Errorf("calls = %q, want %q", *calls, want)
+	}
+}
+
+// TestMergeMissingPrimaryKeyReturnsError verifies that merge writes return an error if the primary key is not present in the batch schema.
+func TestMergeMissingPrimaryKeyReturnsError(t *testing.T) {
+	server, _ := recordingServer(t, true)
+
+	sink := New()
+	ctx := context.Background()
+	merge := filament.WritePolicy{Capability: filament.WritePolicyCapability{Mode: filament.WriteMerge}}
+
+	err := sink.Open(ctx, filament.RunSpec{
+		Run:           "run-1",
+		Sink:          filament.Ref{Config: map[string]any{"url": server.URL, "gzip": false, "primary_key": "missing_id"}},
+		WritePolicies: map[string]filament.WritePolicy{"products": merge},
+	})
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+
+	schema := rowmodel.Schema{
+		Resource:   "products",
+		PrimaryKey: []string{"id"},
+		Fields:     []rowmodel.Field{{Name: "id", Logical: rowmodel.LogicalInt64}},
+	}
+
+	builder := array.NewRecordBuilder(memory.DefaultAllocator, arrowbatch.Schema(schema))
+	builder.Field(0).(*array.Int64Builder).AppendValues([]int64{1}, nil)
+	rows := builder.NewRecordBatch()
+	builder.Release()
+
+	b := arrowbatch.NewBatch(rows, arrowbatch.NewOperations([]rowmodel.Operation{rowmodel.OpInsert}))
+	b.Resource = "products"
+	defer b.Release()
+
+	_, err = sink.Apply(ctx, b, filament.ApplyOptions{Policy: merge})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "primary key \"missing_id\" is not in the schema") {
+		t.Errorf("expected missing primary key error, got: %v", err)
+	}
+}
